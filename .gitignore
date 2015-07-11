@@ -43,6 +43,10 @@ Temporary Items
 .apdisk
 
 # =========================
+# Python and IDE files
+# =========================
+__pycache__
+
 # Pycharm Files
 # =========================
 .idea
