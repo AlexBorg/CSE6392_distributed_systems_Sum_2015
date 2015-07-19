@@ -7,7 +7,7 @@ from tkinter import filedialog
 
 from client_app import *
 
-#tab code borrowed from:
+# tab code borrowed from:
 # http://code.activestate.com/recipes/577261-python-tkinter-tabs/
 
 BASE = RAISED
@@ -68,32 +68,73 @@ class TabBar(Frame):
 
 
 class ClientGUI:
-    def __init__(self, ob_root_window):
-        self.ob_root_window = ob_root_window
+    def __init__(self, root_window):
+        self.root_window = root_window
         self.menu = ClMenu(self)
 
-        self.client = ClientApp(self.message_callback)
+        self.client = ClientApp()
 
-        self.tab_bar = TabBar(self.ob_root_window, 'tab1')
-        self.tab1 = Tab(self.ob_root_window, "tab1")
-        self.tab2 = Tab(self.ob_root_window, "tab2")
-        self.tab3 = Tab(self.ob_root_window, "tab3")
+        self.tab_bar = TabBar(self.root_window, 'servers')
+        self.select_servers_tab = Tab(self.root_window, "servers")
+        self.select_servers_frame = SelectServerFrame(self, self.select_servers_tab)
 
-        self.tab_bar.add(self.tab1)
-        self.tab_bar.add(self.tab2)
-        self.tab_bar.add(self.tab3)
+        self.tab_bar.add(self.select_servers_tab)
+
+        self.group_tabs = set()
+        self.group_frames = set()
+
+        self.server_tabs = set()
+        self.server_frames = set()
+        # self.tab2 = Tab(self.root_window, "tab2")
+        # self.tab_bar.add(self.tab2)
 
         self.tab_bar.show()
+        self.check_messages()
 
-    def message_callback(self, group, message):
-        print("callback called with " + message)
+    def check_messages(self):
+        message = self.client.check_messages()
+        if message is None:
+            self.root_window.after(200, self.check_messages)
+        else:
+            for group_frame in self.group_frames:
+                group_frame.post_message(message)
+            self.root_window.after(0, self.check_messages)
+
+    def connect_server(self, server_name):
+        result_err, message = self.client.connect_server(server_name, "name", "password")
+        if result_err:
+            print(message)
+            return
+
+        server_tab = Tab(self.root_window, server_name)
+        server_frame = ServerFrame(self, server_tab, server_name)
+        self.tab_bar.add(server_tab)
+        self.tab_bar.switch_tab(server_name)
+
+        self.server_tabs.add(server_tab)
+        self.server_frames.add(server_frame)
+
+    def join_group(self, group_name):
+        result_err, message = self.client.join_group(group_name)
+        if result_err:
+            print(message)
+            return
+
+        group_tab = Tab(self.root_window, group_name)
+        group_frame = GroupFrame(self, group_tab, group_name)
+        self.tab_bar.add(group_tab)
+        self.tab_bar.switch_tab(group_name)
+
+        self.server_tabs.add(group_tab)
+        self.server_frames.add(group_frame)
+
 
 class ClMenu:
     def __init__(self, master):
 
         self.master = master
-        self.menu = Menu(master.ob_root_window)
-        master.ob_root_window.config(menu=self.menu)
+        self.menu = Menu(master.root_window)
+        master.root_window.config(menu=self.menu)
         self.file_menu = Menu(self.menu)
         self.menu.add_cascade(label="File", menu=self.file_menu)
         self.file_menu.add_command(label="New", command=self.menu_callback)
@@ -110,6 +151,86 @@ class ClMenu:
 
     def menu_help_callback(self):
         print("called the help menu callback!")
+
+
+class SelectServerFrame:
+    def __init__(self, master, owning_tab):
+        self.master = master
+        self.owning_tab = owning_tab
+
+        self.listbox = Listbox(owning_tab)
+        self.listbox.pack(side=TOP)
+        button = Button(owning_tab, text="Connect Server", command=self.connect_server)
+        button.pack(side=TOP)
+
+        button = Button(owning_tab, text="Update List", command=self.update_list)
+        button.pack(side=TOP)
+
+    def connect_server(self):
+        selection = self.listbox.curselection()
+        server_name = self.listbox.get(selection[0])
+        self.master.connect_server(server_name)
+
+    def update_list(self):
+        servers = self.master.client.get_server_names()
+        self.listbox.delete(0, END)
+        for server in servers:
+            self.listbox.insert(END, server.name)
+        self.listbox.activate(1)
+
+
+class ServerFrame:
+    def __init__(self, master, owning_tab, server_name):
+        self.master = master
+        self.owning_tab = owning_tab
+        self.server_name = server_name
+
+        self.listbox = Listbox(owning_tab)
+        self.listbox.pack(side=TOP)
+        button = Button(owning_tab, text="Join Group", command=self.join_group)
+        button.pack(side=TOP)
+
+        button = Button(owning_tab, text="Update List", command=self.update_list)
+        button.pack(side=TOP)
+
+        self.entry = Entry(owning_tab, width=50)
+        self.entry.insert(0, '')
+        self.entry.pack(side=TOP)
+        button = Button(owning_tab, text="Create Group", command=self.create_group)
+        button.pack(side=LEFT)
+
+    def join_group(self):
+        selection = self.listbox.curselection()
+        server_name = self.listbox.get(selection)
+        self.master.connect_server(server_name)
+
+    def update_list(self):
+        servers = self.master.client.get_group_names()
+        self.listbox.delete(0, END)
+        for server in servers:
+            self.listbox.insert(END, server.name)
+        self.listbox.activate(1)
+
+    def create_group(self):
+        self.master.join_group(self.entry.get())
+
+
+class GroupFrame:
+    def __init__(self, master, owning_tab, group_name):
+        self.master = master
+        self.owning_tab = owning_tab
+        self.group_name = group_name
+
+        self.display = Text(owning_tab, height=10, width=40)
+        self.display.pack(side=TOP)
+        self.entry = Entry(owning_tab, width=50)
+        self.entry.insert(0, '')
+        self.entry.pack(side=TOP)
+        self.button = Button(owning_tab, text="Send", command=self.send_message)
+        self.button.pack(side=TOP)
+
+    def send_message(self):
+        self.master.client.send_message(self.group_name, "send message")
 
 
 def close_window_callback(root):

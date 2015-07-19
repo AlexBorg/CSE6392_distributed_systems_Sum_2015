@@ -46,8 +46,11 @@ class ServerApp:
     def shutdown(self):
         self.should_shutdown = True
 
-    # thread to send out an announcement that this server exists every second
     def announce_exec(self):
+        """
+        thread to send out an announcement that this server exists every second
+        :return: always None
+        """
         announcer = socket(AF_INET, SOCK_DGRAM)
         announcer.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         announcer.connect(("255.255.255.255", ANNOUNCE_PORT))
@@ -60,9 +63,13 @@ class ServerApp:
             announcer.send(pickle.dumps(announcement))
             sleep(1)
 
-    # this function should be in it's own thread and handles incoming network data
-    # not using a socket server here because
     def process_new_request(self, handler):
+        """
+        this function should be in it's own thread and handles incoming network data
+        :param handler: StreamRequestHanlder that controls the socket
+        :return: always None
+        """
+        #
 
         try:
             data = pickle.load(handler.rfile)
@@ -73,6 +80,8 @@ class ServerApp:
         # except:
         finally:
             pass
+
+        handler.wfile(data)  # send data back so client knows connection is accepted
 
         while not self.should_shutdown:
             data = pickle.load(handler.rfile)
