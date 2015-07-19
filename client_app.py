@@ -20,10 +20,13 @@ class ClientApp:
         self.connection = socket(AF_INET, SOCK_STREAM)
         self.connected = False
 
-        self.server_list = []
+        self.server_list = set()
         self.announcement = socket(AF_INET, SOCK_DGRAM)
+        self.announcement.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         self.announcement.bind((gethostname(), ANNOUNCE_PORT))
         self.announce_thread = Thread(target=self.find_servers)
+        self.announce_thread.daemon = True
+        self.announce_thread.start()
 
     def shutdown(self):
         self.should_shutdown = True
@@ -89,7 +92,7 @@ class ClientApp:
 
             announcement_data = pickle.loads(chunk)
             # add server name to list
-            self.server_list.Append(announcement_data)
+            self.server_list.add(announcement_data)
 
     def message_thread(self):
         while not self.should_shutdown and self.connected:

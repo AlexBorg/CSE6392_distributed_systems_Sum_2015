@@ -5,6 +5,25 @@ from socket import *
 from threading import *
 from time import *
 import pickle
+import socketserver
+import inspect
+
+
+global_server = None
+
+
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    pass
+
+
+class TCPRequestHandler(socketserver.StreamRequestHandler):
+    """
+    The RequestHandler class for our server.
+    """
+    def handle(self):
+        # self.request is the TCP socket connected to the client
+        global global_server
+        global_server.process_new_request(self)
 
 
 class ServerApp:
@@ -12,20 +31,25 @@ class ServerApp:
         self.should_shutdown = False
         self.listener = socket(AF_INET, SOCK_STREAM)
 
-        self.connection_streams = []
+        self.groups = []
 
         self.announce_thread = Thread(target=self.announce_exec)
         self.announce_thread.daemon = True
         self.announce_thread.start()
-        self.listen_thread = Thread(target=self.listen_exec)
-        self.listen_thread.daemon = True
-        self.listen_thread.start()
 
-    def wait_for_shutdown(self):
-        self.listen_thread.join()
+        global global_server
+        global_server = self
 
+        self.server = ThreadedTCPServer((gethostname(), CONNECTION_PORT), TCPRequestHandler)
+        self.server.serve_forever()
+
+    def shutdown(self):
+        self.should_shutdown = True
+
+    # thread to send out an announcement that this server exists every second
     def announce_exec(self):
         announcer = socket(AF_INET, SOCK_DGRAM)
+        announcer.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         announcer.connect(("255.255.255.255", ANNOUNCE_PORT))
 
         address = gethostbyname(gethostname())
@@ -36,27 +60,28 @@ class ServerApp:
             announcer.send(pickle.dumps(announcement))
             sleep(1)
 
-    def listen_exec(self):
-        self.listener.bind((gethostname(), CONNECTION_PORT))
-        self.listener.listen(25)
+    # this function should be in it's own thread and handles incoming network data
+    # not using a socket server here because
+    def process_new_request(self, handler):
+
+        try:
+            data = pickle.load(handler.rfile)
+            # first data should be login data
+            # FIXME: Borg: validate login data here, skipping for now
+            inspect.isclass(data)
+
+        # except:
+        finally:
+            pass
 
         while not self.should_shutdown:
-            client_socket, address = self.listener.accept()
-            connection_thread = Thread(target=self.connection_exec(), args=(client_socket,))
-            connection_thread.daemon = True
-            connection_thread.start()
-
-    def connection_exec(self, client_socket):
-        f = client_socket.makefile('rb', buffer_size)
-        data = pickle.load(f)
-        #FIXME: check data payload is a LoginData
-
-        f.close()
+            data = pickle.load(handler.rfile)
+            # process each packet here
 
 
 def server_main():
-    server = ServerApp()
-    server.wait_for_shutdown()
+    server = ServerApp()  # init waits forever as it starts the TCP server
+    # server.wait_for_shutdown()
 
 if __name__ == "__main__":
     server_main()
