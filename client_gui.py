@@ -2,8 +2,7 @@
 
 from tkinter import *
 from tkinter import messagebox
-from tkinter import simpledialog
-from tkinter import filedialog
+
 
 from client_app import *
 
@@ -12,6 +11,7 @@ from client_app import *
 
 BASE = RAISED
 SELECTED = FLAT
+
 
 # a base tab class
 class Tab(Frame):
@@ -31,29 +31,32 @@ class TabBar(Frame):
 
     def show(self):
         self.pack(side=TOP, expand=YES, fill=X)
-        self.switch_tab(self.init_name or self.tabs.keys()[-1])# switch the tab to the first tab
+        self.switch_tab(self.init_name or self.tabs.keys()[-1])  # switch the tab to the first tab
 
     def add(self, tab):
         tab.pack_forget()									# hide the tab on init
 
         self.tabs[tab.tab_name] = tab						# add it to the list of tabs
-        b = Button(self, text=tab.tab_name, relief=BASE,    # basic button stuff
-            command=(lambda name=tab.tab_name: self.switch_tab(name)))  # set the command to switch tabs
-        b.pack(side=LEFT)												# pack the buttont to the left mose of self
+        b = Button(self,
+                   text=tab.tab_name,
+                   relief=BASE,  # basic button stuff
+                   command=(lambda name=tab.tab_name: self.switch_tab(name)))  # set the command to switch tabs
+        b.pack(side=LEFT)												# pack the button to the left mose of self
         self.buttons[tab.tab_name] = b											# add it to the list of buttons
 
-    def delete(self, tabname):
+    def delete(self, tab_name):
 
-        if tabname == self.current_tab:
+        if tab_name == self.current_tab:
             self.current_tab = None
-            self.tabs[tabname].pack_forget()
-            del self.tabs[tabname]
+            self.tabs[tab_name].pack_forget()
+            del self.tabs[tab_name]
             self.switch_tab(self.tabs.keys()[0])
 
-        else: del self.tabs[tabname]
+        else:
+            del self.tabs[tab_name]
 
-        self.buttons[tabname].pack_forget()
-        del self.buttons[tabname]
+        self.buttons[tab_name].pack_forget()
+        del self.buttons[tab_name]
 
     def switch_tab(self, name):
         if self.current_tab:
@@ -98,6 +101,7 @@ class ClientGUI:
         else:
             for group_frame in self.group_frames:
                 group_frame.post_message(message)
+
             self.root_window.after(0, self.check_messages)
 
     def connect_server(self, server_name):

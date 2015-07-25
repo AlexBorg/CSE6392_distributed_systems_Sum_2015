@@ -11,7 +11,7 @@ import pickle
 # message_callback(group, message)
 # group is the group where the message came from, and message is the message text.
 #
-# currently all functions return a two tupple. the first is the int return code (0
+# currently all functions return a two tuple. the first is the int return code (0
 # is success) and the second is return code text.
 # FIXME: Borg: Consider changing to raising an exception.
 class ClientApp:
@@ -114,8 +114,17 @@ class ClientApp:
         :return: None if no message, or message_data if data received
         """
         if not self.should_shutdown and self.connected:
-            chunk = self.connection.recv(2048)
-            if not chunk == '':
-                return pickle.loads(chunk)
+            while 1:  # process all incoming message while queue exists
+                chunk = self.connection.recv(2048)
+                if len(chunk) == 0:
+                    break
+                message = pickle.loads(chunk)
+                if message is MessageData:
+                    return message
+                elif message is GroupSubscriptionData:
+                    if message.join:
+                        self.group_list.add(message)
+                    else:
+                        self.group_list.remove(message)
         return None
 

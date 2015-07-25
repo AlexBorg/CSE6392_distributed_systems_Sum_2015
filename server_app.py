@@ -1,4 +1,4 @@
-#this file contains the server application code.
+# this file contains the server application code.
 
 from messages import *
 from socket import *
@@ -6,7 +6,6 @@ from threading import *
 from time import *
 import pickle
 import socketserver
-import inspect
 
 
 global_server = None
@@ -31,7 +30,7 @@ class ServerApp:
         self.should_shutdown = False
         self.listener = socket(AF_INET, SOCK_STREAM)
 
-        self.groups = []
+        self.groups = set()
 
         self.announce_thread = Thread(target=self.announce_exec)
         self.announce_thread.daemon = True
@@ -66,7 +65,7 @@ class ServerApp:
     def process_new_request(self, handler):
         """
         this function should be in it's own thread and handles incoming network data
-        :param handler: StreamRequestHanlder that controls the socket
+        :param handler: StreamRequestHandler that controls the socket
         :return: always None
         """
         #
@@ -75,7 +74,8 @@ class ServerApp:
             data = pickle.load(handler.rfile)
             # first data should be login data
             # FIXME: Borg: validate login data here, skipping for now
-            inspect.isclass(data)
+            if data is not LoginData:
+                return
 
         # except:
         finally:
@@ -85,7 +85,17 @@ class ServerApp:
 
         while not self.should_shutdown:
             data = pickle.load(handler.rfile)
+            # may need to lock here
+
             # process each packet here
+            if data is GroupSubscriptionData:
+                # FIXME: create group if it doesn't exist
+                # Add this socket to the group so future messages can be sent
+                print("trying to add group")
+            elif data is MessageData:
+                for group in self.groups:
+                    # FIXME: if group matches data.group, send message to all sockets in the group
+                    print("trying send message to group")
 
 
 def server_main():
