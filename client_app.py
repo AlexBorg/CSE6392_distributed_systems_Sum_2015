@@ -1,9 +1,10 @@
-
+#!/usr/bin/python3
 from messages import *
 from socket import *
-from threading import *
+from threading import Thread
+from queue import Queue
+import traceback
 import pickle
-
 
 # base class to control client communication with the server. It provides a callback
 # function for posting when new messages come in from the server
@@ -13,118 +14,66 @@ import pickle
 #
 # currently all functions return a two tuple. the first is the int return code (0
 # is success) and the second is return code text.
-# FIXME: Borg: Consider changing to raising an exception.
 class ClientApp:
     def __init__(self):
-        self.should_shutdown = False
-        self.connection = socket(AF_INET, SOCK_STREAM)
-        self.connected = False
+        self.connection = None
+        self.input_q = Queue()
+        self.msg_listeners = list()
 
-        self.server_list = set()
-        self.group_list = set()  # FIXME: Borg: currently this is not being populated. Need new message system to get
-        #  these to the client
+    def register_message_listener(self, listener):
+        """Register object to listen for events. Object must implement a method called handle_<MessageName> for each
+        message type that it wants to handle."""
+        self.msg_listeners.append(listener)
 
-        self.announcement = socket(AF_INET, SOCK_DGRAM)
-        self.announcement.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        self.announcement.bind((gethostname(), ANNOUNCE_PORT))
-        self.announce_thread = Thread(target=self.find_servers)
-        self.announce_thread.daemon = True
-        self.announce_thread.start()
+    def handle_input(self):
+        """Loop for handling input from a socket and outputting to a queue. Run inside a thread."""
+        f = self.connection.makefile("rb")
+        try:
+            while True:
+                self.input_q.put(pickle.load(f))
+        except (EOFError, ConnectionError, OSError) as e:
+            self.close_connection()
+            self.input_q.put(ServerErrorMsg("Connection closed by server"))
 
-    def shutdown(self):
-        self.should_shutdown = True
-        self.announcement.close()
-        self.announce_thread.join()
+    def connect_server(self, server_addr):
+        if self.connection:
+            return
 
-    def send_message(self, group, message):
-        if not self.connected:
-            return -1, "ERROR: not connected"
-        # package data here
-        message_data = MessageData(group, message)
-        self.connection.send(pickle.dumps(message_data))
-        return 0, ""
+        try:
+            self.connection = socket(AF_INET, SOCK_STREAM)
+            self.connection.connect((server_addr, CONNECTION_PORT))
 
-    def join_group(self, group):
-        if not self.connected:
-            return -1, "ERROR: not connected"
-        # package data here
-        group_data = GroupSubscriptionData(group, True)
-        self.connection.send(pickle.dumps(group_data))
-        return 0, ""
+            self.input_thread = Thread(target=self.handle_input)
+            self.input_thread.daemon = True
+            self.input_thread.start()
 
-    def leave_group(self, group):
-        if not self.connected:
-            return -1, "ERROR: not connected"
-        # package data here
-        group_data = GroupSubscriptionData(group, False)
-        self.connection.send(pickle.dumps(group_data))
-        return 0, ""
+        except (ConnectionError, OSError) as e:
+            traceback.print_exc()
+            self.close_connection()
+            self.input_q.put(ServerErrorMsg(str(e)))
 
-    def connect_server(self, server_name, username, password):
-        if self.connected:
-            return -1, "ERROR: already connected"
+    def close_connection(self):
+        try:
+            self.connection.close()
+        except (OSError, AttributeError):
+            pass
 
-        target = ""
-        for server in self.server_list:
-            if server.name == server_name:
-                target = server
-                break
+        self.connection = None
 
-        if target == "":
-            return -1, "ERROR: invalid server name"
-
-        self.connection.connect((target.address, CONNECTION_PORT))
-
-        # package data here
-        login = LoginData(username, password)
-
-        self.connection.send(pickle.dumps(login))
-        data = self.connection.recv(4096)
-        if data == '':
-            return -1, "ERROR, connection closed"
-
-        self.connection.setblocking(False)
-        self.connected = True
-        return 0, ""
-
-    def disconnect_server(self):
-        self.connection.close()
-        self.connection = socket(AF_INET, SOCK_STREAM)
-        self.connected = False
-
-    def get_server_names(self):
-        return self.server_list.copy()
-
-    def get_group_names(self):
-        return self.group_list.copy()
-
-    def find_servers(self):
-        while not self.should_shutdown:
-            chunk = self.announcement.recv(2048)
-            if chunk == '':
-                raise RuntimeError("socket connection broken")
-
-            announcement_data = pickle.loads(chunk)
-            # add server name to list
-            self.server_list.add(announcement_data)
+    def send_message(self, msg):
+        if self.connection:
+            self.connection.send(pickle.dumps(msg))
 
     def check_messages(self):
         """
         should be called periodically by the GUI client.
         :return: None if no message, or message_data if data received
         """
-        if not self.should_shutdown and self.connected:
-            while 1:  # process all incoming message while queue exists
-                chunk = self.connection.recv(2048)
-                if len(chunk) == 0:
-                    break
-                message = pickle.loads(chunk)
-                if message is MessageData:
-                    return message
-                elif message is GroupSubscriptionData:
-                    if message.join:
-                        self.group_list.add(message)
-                    else:
-                        self.group_list.remove(message)
-        return None
-
+        while not self.input_q.empty():
+            msg = self.input_q.get()
+            print("Got", type(msg), ":", str(msg))
+            for listener in self.msg_listeners:
+                # Call appropriate handler function in listener if it exists
+                fn = getattr(listener, "handle_" + type(msg).__name__, None)
+                if fn:
+                    fn(msg)
