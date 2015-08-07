@@ -71,7 +71,6 @@ class ClientApp:
         """
         while not self.input_q.empty():
             msg = self.input_q.get()
-            print("Got", type(msg), ":", str(msg))
             for listener in self.msg_listeners:
                 # Call appropriate handler function in listener if it exists
                 fn = getattr(listener, "handle_" + type(msg).__name__, None)

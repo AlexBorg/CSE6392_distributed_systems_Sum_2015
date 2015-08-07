@@ -72,10 +72,13 @@ class ChatFrame(Frame):
         Label(self, text="Chat Rooms").grid(row=0, column=0, columnspan=2)
 
         self.groups = Listbox(self)
-        self.groups.bind("<Double-Button-1>", self.join_group)
+        self.groups.bind("<Double-Button-1>", self.join_leave_group)
+        self.groups.bind("<<ListboxSelect>>", self.group_selection_changed)
         self.groups.grid(row=1, column=0, sticky="nsew", columnspan=2, padx=2, pady=2)
         Button(self, text="Create", command=self.create_group).grid(row=2, column=0, sticky="nsew")
-        Button(self, text="Join", command=self.join_group).grid(row=2, column=1, sticky="nsew")
+        
+        self.join_leave_button = Button(self, text="Join", command=self.join_leave_group)
+        self.join_leave_button.grid(row=2, column=1, sticky="nsew")
 
         self.chat_text = dict()
 
@@ -90,6 +93,11 @@ class ChatFrame(Frame):
         Button(self, text="Send", command=self.send_text).grid(row=2, column=3, sticky="nsew")
 
         client.register_message_listener(self)
+
+    def group_selection_changed(self, ev):
+        group = ev.widget.get(ev.widget.curselection())
+        tab = self.get_group_tab(group)
+        self.join_leave_button.config(text=("Leave" if tab else "Join"))
 
     def add_group_tab(self, name):
         box = Frame(self.chat_tabs)
@@ -116,14 +124,17 @@ class ChatFrame(Frame):
             client.send_message(CreateGroupMsg(name))
             client.send_message(GroupSubscriptionData(name, True))
 
-    def join_group(self, *args):
+    def join_leave_group(self, *args):
         group = self.groups.get(ACTIVE)
         tab = self.get_group_tab(group)
         if tab:
-            self.chat_tabs.select(tab)
+            client.send_message(GroupSubscriptionData(group, False))
+            self.chat_tabs.forget(tab)
+            self.join_leave_button.config(text="Join")
         else:
             client.send_message(GroupSubscriptionData(group, True))
             self.add_group_tab(group)
+            self.join_leave_button.config(text="Leave")
 
     def send_text(self, *args):
         if not self.chat_tabs.select() or not self.chat_say_text.get():

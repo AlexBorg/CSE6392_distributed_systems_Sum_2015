@@ -14,6 +14,7 @@ DisconnectedMsg = namedtuple('DisconnectedMsg', 'reason')
 ServerErrorMsg = namedtuple('ServerErrorMsg', 'error')
 CreateGroupMsg = namedtuple('CreateGroupMsg', 'name')
 ChatErrorMsg = namedtuple('ChatErrorMsg', 'error')
+UserDisconnectMsg = namedtuple("UserDisconnectMsg", '')
 
 # join is true for joining, and false for leaving
 GroupSubscriptionData = namedtuple('GroupSubscriptionData', 'group join')

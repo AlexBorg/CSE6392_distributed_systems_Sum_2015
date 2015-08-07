@@ -5,7 +5,7 @@ import pickle
 import socketserver
 import traceback
 import shelve
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from queue import Queue
 from threading import Thread
 
@@ -14,8 +14,8 @@ ConnectionInfo = namedtuple("ConnectionInfo", "user conn out_q")
 user_db = shelve.open('users.db', writeback=True)
 groups = set()
 connections = set()
+group_membership = defaultdict(set)
 input_q = Queue()
-
 
 class MsgHandlerThread(Thread):
     daemon = True
@@ -56,9 +56,21 @@ class MsgHandlerThread(Thread):
     def handle_GroupSubscriptionData(self, conn, msg):
         """Notify everybody that a user has joined or left a room"""
         if msg.group in groups:
+            if msg.join:
+                group_membership[conn.user].add(msg.group)
+            else:
+                group_membership[conn.user].discard(msg.group)
+
             text = "{} has {}...\n".format(conn.user, "joined" if msg.join else "left")
             for conn in connections:
                 conn.out_q.put(MessageData(msg.group, text))
+
+    def handle_UserDisconnectMsg(self, conn, msg):
+        """Remove user and generate group leave event for each group they were in"""
+        connections.discard(conn)
+        if not any(conn.user == c.user for c in connections):
+            for group in set(group_membership[conn.user]):
+                self.handle_GroupSubscriptionData(conn, GroupSubscriptionData(group, False))
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -102,6 +114,8 @@ class ServerApp(socketserver.StreamRequestHandler):
             pass
         except Exception:
             traceback.print_exc()
+
+        input_q.put((conn, UserDisconnectMsg()))
 
     def send_message(self, msg):
         pickle.dump(msg, self.wfile)
